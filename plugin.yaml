@@ -1,0 +1,56 @@
+manifest_version: 2
+name: omnisight
+version: 0.1.0
+description: Spatial multi-surface visual perception, AST-to-pixel bi-directional linking, and closed-loop UI self-healing engine with interactive Before/After transcript sliders.
+author: Arjun Bagga <arjunbagga-xyz>
+license: MIT
+homepage: https://github.com/arjunbagga-xyz/hermes-omnisight
+repository: https://github.com/arjunbagga-xyz/hermes-omnisight
+min_hermes_version: 0.5.0
+max_hermes_version: 1.99.0
+categories:
+- developer-tools
+- frontend
+- computer-vision
+- multimodal
+tags:
+- cdp
+- visual-qa
+- ast-mapping
+- responsive-design
+- ui-healing
+requires_env: []
+optional_env: []
+python_dependencies:
+- pydantic>=2.5,<3.0
+- fastapi>=0.109,<1.0
+provides_tools:
+- omnisight_inspect_surface
+- omnisight_resolve_pixel_to_ast
+- omnisight_verify_layout
+- omnisight_generate_diff_slider
+provides_hooks:
+- on_session_start
+config_schema:
+  cdp_port:
+    type: integer
+    default: 9222
+    description: Chrome DevTools Protocol remote debugging port.
+  default_viewports:
+    type: array
+    default: ["mobile_393x852", "desktop_1440x900"]
+    description: Standard viewports audited for responsive collisions.
+  touch_target_min_dp:
+    type: integer
+    default: 48
+    description: Minimum touch target dimension in pixels required for mobile accessibility.
+web:
+  enabled: true
+  mount_path: /omnisight
+desktop:
+  enabled: true
+  entry: desktop/plugin.js
+  surfaces:
+  - transcript
+  - sidebar
+  - statusbar

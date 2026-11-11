@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68.0,<72.0", "wheel>=0.42,<1.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-omnisight"
+version = "0.1.0"
+description = "Spatial multi-surface visual perception, AST-to-pixel bi-directional linking, and closed-loop UI self-healing engine with interactive Before/After transcript sliders."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Arjun Bagga", email = "arjunbagga.xyz@gmail.com" }]
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.5,<3.0",
+    "fastapi>=0.109,<1.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0,<9.0",
+]
+
+[tool.setuptools]
+py-modules = []
+packages = []
+
