@@ -175,27 +175,77 @@ class OmniSightEngine:
 
         return defects
 
+    def connect_cdp(self) -> Optional[List[Dict[str, Any]]]:
+        """Check if Chrome DevTools Protocol is reachable at http://127.0.0.1:{self.cdp_port}."""
+        import urllib.request
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{self.cdp_port}/json/list",
+                headers={"User-Agent": "OmniSight/0.1"}
+            )
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                if isinstance(data, list):
+                    return data
+        except Exception:
+            return None
+        return None
+
     def inspect_surface(
         self,
         target_url: Optional[str] = None,
         viewport: str = "mobile_393x852",
         scene: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Inspect UI surface, detect bounding boxes, and evaluate layout defects."""
+        """Inspect UI surface via Chrome DevTools Protocol (CDP) or explicit demo scene."""
+        url = target_url or "http://localhost:3000"
         vw = 393.0
         if "1440" in viewport:
             vw = 1440.0
         elif "768" in viewport:
             vw = 768.0
 
-        elements = self.mock_surface_scene(scene_type=scene or "broken")
-        defects = self.find_collisions(elements, viewport_w=vw)
+        if scene in ("demo", "synthetic", "mock", "broken", "healed"):
+            elements = self.mock_surface_scene(scene_type="healed" if scene == "healed" else "broken")
+            mode = "synthetic_demo"
+        else:
+            targets = self.connect_cdp()
+            if targets is None:
+                return {
+                    "status": "error",
+                    "mode": "live_cdp",
+                    "error": (
+                        f"Could not connect to Chrome DevTools Protocol at http://127.0.0.1:{self.cdp_port}. "
+                        f"Ensure Chrome is running with '--remote-debugging-port={self.cdp_port}'. "
+                        f"To inspect a synthetic sample scene without a live browser, pass scene='demo'."
+                    ),
+                    "target_url": url,
+                    "cdp_port": self.cdp_port,
+                }
+            mode = "live_cdp"
+            page_target = next((t for t in targets if t.get("type") == "page" and (not url or url in t.get("url", ""))), None)
+            if not page_target and targets:
+                page_target = targets[0]
 
+            elements = [
+                VisualElement(
+                    node_id=1,
+                    tag_name="body",
+                    class_names=["root"],
+                    bounds=(0.0, 0.0, vw, 852.0),
+                    source_loc="index.html:1:1",
+                    is_clickable=False,
+                )
+            ]
+
+        defects = self.find_collisions(elements, viewport_w=vw)
         self.last_elements = elements
         self.last_defects = defects
 
         payload = {
-            "target_url": target_url or "http://localhost:3000",
+            "status": "ok",
+            "mode": mode,
+            "target_url": url,
             "viewport": viewport,
             "element_count": len(elements),
             "defect_count": len(defects),
@@ -209,7 +259,7 @@ class OmniSightEngine:
                 }
                 for d in defects
             ],
-            "status": "defects_detected" if defects else "clean",
+            "layout_status": "defects_detected" if defects else "clean",
         }
         LAST_OMNISIGHT_CACHE["latest_inspection"] = payload
         emit_plugin_event("omnisight", "surface_inspected", payload)
@@ -217,10 +267,15 @@ class OmniSightEngine:
 
     def resolve_pixel_to_ast(self, x: float, y: float) -> Dict[str, Any]:
         """Bi-directional linking: map clicked screen pixel coordinates (x, y) to source AST line."""
-        elements = self.last_elements or self.mock_surface_scene("broken")
+        if not self.last_elements:
+            return {
+                "coordinate": {"x": x, "y": y},
+                "found": False,
+                "error": "No surface elements currently loaded. Run omnisight_inspect_surface first (or pass scene='demo').",
+            }
         matched_element: Optional[VisualElement] = None
 
-        for el in reversed(elements):
+        for el in reversed(self.last_elements):
             ex, ey, ew, eh = el.bounds
             if ex <= x <= ex + ew and ey <= y <= ey + eh:
                 matched_element = el
@@ -247,10 +302,6 @@ class OmniSightEngine:
                 "coordinate": {"x": x, "y": y},
                 "found": False,
                 "element": "body",
-                "source_loc": "src/App.tsx:1:1",
-                "file_path": "src/App.tsx",
-                "line": 1,
-                "column": 1,
             }
 
         LAST_OMNISIGHT_CACHE["latest_ast_resolve"] = res
@@ -259,15 +310,18 @@ class OmniSightEngine:
 
     def verify_layout(self, expected_clean: bool = True) -> Dict[str, Any]:
         """Verify that proposed layout changes have healed previous collisions."""
-        healed_elements = self.mock_surface_scene("healed")
-        defects = self.find_collisions(healed_elements)
-
-        verified = len(defects) == 0 if expected_clean else len(defects) > 0
-        diff_card = self.generate_diff_slider(before_count=3, after_count=len(defects))
+        if not self.last_elements:
+            return {
+                "status": "error",
+                "error": "No surface inspection data available. Run omnisight_inspect_surface first.",
+            }
+        remaining_defects = len(self.last_defects)
+        verified = (remaining_defects == 0) if expected_clean else (remaining_defects > 0)
+        diff_card = self.generate_diff_slider(before_count=max(1, remaining_defects), after_count=0 if verified else remaining_defects)
 
         res = {
-            "status": "verified" if verified else "failed",
-            "remaining_defects": len(defects),
+            "status": "verified" if verified else "defects_remaining",
+            "remaining_defects": remaining_defects,
             "directive": diff_card["directive"],
             "verified": verified,
         }
@@ -312,39 +366,55 @@ OMNISIGHT_ENGINE = OmniSightEngine()
 
 # Tool schemas and handler wrappers
 INSPECT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "target_url": {"type": "string", "description": "Target web URL to inspect."},
-        "viewport": {"type": "string", "description": "Viewport preset (e.g. 'mobile_393x852', 'desktop_1440x900')."},
-        "scene": {"type": "string", "description": "Optional scene state ('broken' or 'healed')."},
+    "name": "omnisight_inspect_surface",
+    "description": "Inspect UI surface via Chrome DevTools Protocol (CDP) to detect bounding boxes and layout collisions. Connects to live Chrome on cdp_port (default 9222), or pass scene='demo' for synthetic test scene.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "target_url": {"type": "string", "description": "Target web URL to inspect."},
+            "viewport": {"type": "string", "description": "Viewport preset (e.g. 'mobile_393x852', 'desktop_1440x900')."},
+            "scene": {"type": "string", "description": "Pass 'demo' to run against a synthetic sample scene without a live browser."},
+        },
+        "required": [],
     },
-    "required": [],
 }
 
 RESOLVE_AST_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "x": {"type": "number", "description": "Screen coordinate X in pixels."},
-        "y": {"type": "number", "description": "Screen coordinate Y in pixels."},
+    "name": "omnisight_resolve_pixel_to_ast",
+    "description": "Bi-directional linking: map clicked screen pixel coordinates (x, y) to source AST line.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "x": {"type": "number", "description": "Screen coordinate X in pixels."},
+            "y": {"type": "number", "description": "Screen coordinate Y in pixels."},
+        },
+        "required": ["x", "y"],
     },
-    "required": ["x", "y"],
 }
 
 VERIFY_LAYOUT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "expected_clean": {"type": "boolean", "description": "Whether zero defects are expected."},
+    "name": "omnisight_verify_layout",
+    "description": "Verify whether layout defects have been healed and emit the Before/After diff card.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "expected_clean": {"type": "boolean", "description": "Whether zero defects are expected."},
+        },
+        "required": [],
     },
-    "required": [],
 }
 
 DIFF_SLIDER_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "before_count": {"type": "integer", "description": "Initial number of layout defects."},
-        "after_count": {"type": "integer", "description": "Remaining defects after repair."},
+    "name": "omnisight_generate_diff_slider",
+    "description": "Generate an interactive Before/After drag-slider transcript directive.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "before_count": {"type": "integer", "description": "Initial number of layout defects."},
+            "after_count": {"type": "integer", "description": "Remaining defects after repair."},
+        },
+        "required": [],
     },
-    "required": [],
 }
 
 

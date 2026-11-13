@@ -13,10 +13,11 @@ function OmniSightDirectiveCard({ attrs }) {
 
   const handleApprove = () => {
     setStatus('applied');
-    if (host && typeof host.dispatchAction === 'function') {
-      host.dispatchAction('hermes:send-input', {
-        text: `omnisight_verify_layout(expected_clean=true)`
-      });
+    const cmd = `omnisight_verify_layout(expected_clean=true)`;
+    if (host && host.composer && typeof host.composer.submit === 'function') {
+      host.composer.submit(cmd);
+    } else if (host && host.composer && typeof host.composer.insertText === 'function') {
+      host.composer.insertText(cmd);
     }
   };
 

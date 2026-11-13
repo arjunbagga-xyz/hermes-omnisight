@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from .engine import OMNISIGHT_ENGINE
 
@@ -12,21 +12,25 @@ logger = logging.getLogger("hermes.omnisight.middleware")
 FRONTEND_EXTENSIONS = {".tsx", ".jsx", ".vue", ".css", ".html", ".svelte"}
 
 
-def omnisight_tool_execution_middleware(result: Any, tool_call: Dict[str, Any], context: Optional[Any] = None) -> Any:
-    """Detect if a tool modified a frontend component and attach the visual diff slider."""
-    if not isinstance(tool_call, dict):
-        return result
+def omnisight_tool_execution_middleware(
+    tool_name: Optional[str] = None,
+    args: Optional[Dict[str, Any]] = None,
+    next_call: Optional[Callable[..., Any]] = None,
+    **kwargs: Any,
+) -> Any:
+    """
+    Hermes tool_execution middleware contract:
+    (tool_name: str, args: dict, next_call: callable, **kwargs)
+    """
+    name = tool_name or kwargs.get("name", "")
+    tool_args = args if args is not None else kwargs.get("arguments", {})
+    result = next_call(tool_args if args is not None else kwargs) if next_call else None
 
-    name = tool_call.get("name", "")
-    args = tool_call.get("arguments", {})
-
-    if name in {"write_file", "edit_file", "patch_file"} and isinstance(args, dict):
-        path = args.get("Path") or args.get("path") or ""
+    if name in {"write_file", "patch"} and isinstance(tool_args, dict):
+        path = str(tool_args.get("path") or tool_args.get("Path") or "")
         if any(path.endswith(ext) for ext in FRONTEND_EXTENSIONS):
-            # Verify layout and generate diff directive
             diff_res = OMNISIGHT_ENGINE.generate_diff_slider(before_count=2, after_count=0)
             directive = diff_res.get("directive", "")
-
             if isinstance(result, str):
                 result += f"\n\n{directive}"
             elif isinstance(result, dict) and "output" in result and isinstance(result["output"], str):

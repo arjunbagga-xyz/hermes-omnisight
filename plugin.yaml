@@ -31,6 +31,8 @@ provides_tools:
 - omnisight_generate_diff_slider
 provides_hooks:
 - on_session_start
+provides_middleware:
+- tool_execution
 config_schema:
   cdp_port:
     type: integer
