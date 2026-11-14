@@ -14,7 +14,6 @@ from .engine import (_ensure_json_str,
     handle_omnisight_resolve_pixel_to_ast,
     handle_omnisight_verify_layout,
 )
-from .middleware import omnisight_tool_execution_middleware
 
 
 def _tool_handler(fn):
@@ -31,7 +30,7 @@ def on_session_start_hook(payload: Dict[str, Any], **kwargs: Any) -> Dict[str, A
 
 
 def register(ctx: Any) -> None:
-    """Register OmniSight tools, hooks, and middleware with the Hermes Plugin Context."""
+    """Register OmniSight tools and hooks with the Hermes Plugin Context."""
     ctx.register_tool(
         name="omnisight_inspect_surface",
         toolset="omnisight",
@@ -66,6 +65,3 @@ def register(ctx: Any) -> None:
     )
 
     ctx.register_hook("on_session_start", on_session_start_hook)
-
-    if hasattr(ctx, "register_middleware"):
-        ctx.register_middleware("tool_execution", omnisight_tool_execution_middleware)

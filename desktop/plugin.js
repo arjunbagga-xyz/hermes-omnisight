@@ -9,15 +9,14 @@ function OmniSightDirectiveCard({ attrs }) {
   const diffId = (attrs && attrs.id) || 'diff_49b';
   const beforeDefects = (attrs && attrs.before_defects) || '2';
   const afterDefects = (attrs && attrs.after_defects) || '0';
-  const ssim = (attrs && attrs.ssim) || '0.994';
 
   const handleApprove = () => {
     setStatus('applied');
     const cmd = `omnisight_verify_layout(expected_clean=true)`;
     if (host && host.composer && typeof host.composer.submit === 'function') {
-      host.composer.submit(cmd);
+      host.composer.submit(null, cmd);
     } else if (host && host.composer && typeof host.composer.insertText === 'function') {
-      host.composer.insertText(cmd);
+      host.composer.insertText(null, cmd);
     }
   };
 
@@ -54,7 +53,7 @@ function OmniSightDirectiveCard({ attrs }) {
           }),
           jsx('span', {
             style: { fontFamily: 'var(--ui-font-mono)', fontSize: '11px', color: 'var(--ui-text-secondary)' },
-            children: `Defects: ${beforeDefects} → ${afterDefects} (SSIM ${ssim})`
+            children: `Defects: ${beforeDefects} → ${afterDefects}`
           })
         ]
       }),
@@ -77,8 +76,8 @@ function OmniSightDirectiveCard({ attrs }) {
           jsxs('div', {
             style: { display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '11px', fontFamily: 'var(--ui-font-mono)' },
             children: [
-              jsx('span', { style: { color: 'var(--ui-text-secondary)' }, children: '◀ BEFORE: Collision & Touch Fail' }),
-              jsx('span', { style: { color: 'var(--ui-accent)' }, children: 'AFTER: Zero Collisions (AAA) ▶' })
+              jsx('span', { style: { color: 'var(--ui-text-secondary)' }, children: Number(beforeDefects) > 0 ? `◀ BEFORE: ${beforeDefects} Defect(s)` : '◀ BEFORE: Clean' }),
+              jsx('span', { style: { color: 'var(--ui-accent)' }, children: Number(afterDefects) === 0 ? 'AFTER: Zero Collisions ▶' : `AFTER: ${afterDefects} Defect(s) Remaining ▶` })
             ]
           }),
           jsx('input', {

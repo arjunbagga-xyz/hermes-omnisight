@@ -58,8 +58,9 @@ class LayoutDefect:
 class OmniSightEngine:
     """Perceptual layout inspection and AST source mapping engine."""
 
-    def __init__(self, cdp_port: int = 9222):
+    def __init__(self, cdp_port: int = 9222, touch_target_min_dp: int = 48):
         self.cdp_port = cdp_port
+        self.touch_target_min_dp = touch_target_min_dp
         self.last_elements: List[VisualElement] = []
         self.last_defects: List[LayoutDefect] = []
         self.history: List[Dict[str, Any]] = []
@@ -140,13 +141,14 @@ class OmniSightEngine:
                 )
 
             # Check touch target size
-            if el.is_clickable and (w < 44.0 or h < 44.0):
+            min_touch = float(self.touch_target_min_dp)
+            if el.is_clickable and (w < min_touch or h < min_touch):
                 defects.append(
                     LayoutDefect(
                         defect_type="TOUCH_TARGET_TOO_SMALL",
                         severity="WARNING",
                         element_a=el,
-                        description=f"Clickable <{el.tag_name}> size ({w:.0f}x{h:.0f}px) fails 48px touch accessibility requirement",
+                        description=f"Clickable <{el.tag_name}> size ({w:.0f}x{h:.0f}px) fails {self.touch_target_min_dp}px touch accessibility requirement",
                     )
                 )
 
@@ -209,34 +211,13 @@ class OmniSightEngine:
             elements = self.mock_surface_scene(scene_type="healed" if scene == "healed" else "broken")
             mode = "synthetic_demo"
         else:
-            targets = self.connect_cdp()
-            if targets is None:
-                return {
-                    "status": "error",
-                    "mode": "live_cdp",
-                    "error": (
-                        f"Could not connect to Chrome DevTools Protocol at http://127.0.0.1:{self.cdp_port}. "
-                        f"Ensure Chrome is running with '--remote-debugging-port={self.cdp_port}'. "
-                        f"To inspect a synthetic sample scene without a live browser, pass scene='demo'."
-                    ),
-                    "target_url": url,
-                    "cdp_port": self.cdp_port,
-                }
-            mode = "live_cdp"
-            page_target = next((t for t in targets if t.get("type") == "page" and (not url or url in t.get("url", ""))), None)
-            if not page_target and targets:
-                page_target = targets[0]
-
-            elements = [
-                VisualElement(
-                    node_id=1,
-                    tag_name="body",
-                    class_names=["root"],
-                    bounds=(0.0, 0.0, vw, 852.0),
-                    source_loc="index.html:1:1",
-                    is_clickable=False,
-                )
-            ]
+            return {
+                "status": "error",
+                "mode": "live_cdp",
+                "error": "live inspection not implemented, pass scene='demo' to test synthetic inspection",
+                "target_url": url,
+                "cdp_port": self.cdp_port,
+            }
 
         defects = self.find_collisions(elements, viewport_w=vw)
         self.last_elements = elements
@@ -339,14 +320,12 @@ class OmniSightEngine:
         """Generate an interactive Before/After drag-slider transcript directive."""
         diff_id = f"diff_{secrets.token_hex(3)}"
         status = "healed" if after_count < before_count else "inspecting"
-        ssim = "0.994" if after_count == 0 else "0.840"
 
         directive = (
             f'::omnisight-diff[id="{diff_id}" '
             f'status="{status}" '
             f'before_defects={before_count} '
-            f'after_defects={after_count} '
-            f'ssim="{ssim}"]'
+            f'after_defects={after_count}]'
         )
 
         payload = {
@@ -354,7 +333,6 @@ class OmniSightEngine:
             "status": status,
             "before_defects": before_count,
             "after_defects": after_count,
-            "ssim": ssim,
             "directive": directive,
         }
         LAST_OMNISIGHT_CACHE["latest_diff"] = payload
@@ -367,7 +345,7 @@ OMNISIGHT_ENGINE = OmniSightEngine()
 # Tool schemas and handler wrappers
 INSPECT_SCHEMA = {
     "name": "omnisight_inspect_surface",
-    "description": "Inspect UI surface via Chrome DevTools Protocol (CDP) to detect bounding boxes and layout collisions. Connects to live Chrome on cdp_port (default 9222), or pass scene='demo' for synthetic test scene.",
+    "description": "Inspect UI surface via Chrome DevTools Protocol (CDP) or explicit demo scene. Live inspection over CDP is not yet implemented; pass scene='demo' to inspect a synthetic sample scene.",
     "parameters": {
         "type": "object",
         "properties": {

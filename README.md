@@ -17,7 +17,7 @@ It solves layout regressions and accessibility collisions by inspecting rendered
 
 ## 🛠️ Tools
 
-* `omnisight_inspect_surface(target_url, viewport, scene)`: Connects to Chrome via Chrome DevTools Protocol (`--remote-debugging-port=9222`) to inspect real DOM layout and element boundaries. If live Chrome is not running, returns a connection error, or pass `scene='demo'` to inspect a synthetic sample scene.
+* `omnisight_inspect_surface(target_url, viewport, scene)`: Inspects UI surface layout. Pass `scene='demo'` to inspect a synthetic sample scene. Live CDP DOM inspection is not yet implemented (returns an explicit error).
 * `omnisight_resolve_pixel_to_ast(x, y)`: Maps screen coordinate to exact source code line from inspected elements.
 * `omnisight_verify_layout(expected_clean)`: Validates that responsive collisions are resolved.
 * `omnisight_generate_diff_slider(before_count, after_count)`: Creates interactive desktop comparison directive.
